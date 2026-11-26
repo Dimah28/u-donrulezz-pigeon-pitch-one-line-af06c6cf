@@ -2,7 +2,9 @@
 
 The program drops a single 175-character pitch sentence for CooCapital
 into /output/entry.txt. Standard library only, no network access, no
-secrets, and the same bytes come out on every run.
+secrets, and the same bytes come out on every run: the entry is rendered
+twice in-process and the run aborts unless both renders are identical,
+then the written file is read back and compared byte for byte.
 """
 
 import os
@@ -55,13 +57,27 @@ def validate_pitch(raw):
     return text
 
 
+def render_entry():
+    """Return the exact bytes the entry file must hold."""
+    return (validate_pitch(PITCH) + "\n").encode("utf-8")
+
+
 def main():
-    pitch = validate_pitch(PITCH)
+    first = render_entry()
+    second = render_entry()
+    if first != second:
+        reject("nondeterministic render: two passes disagree")
     folder = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(folder, exist_ok=True)
     target = os.path.join(folder, "entry.txt")
-    with open(target, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(pitch + "\n")
+    with open(target, "wb") as handle:
+        handle.write(first)
+    with open(target, "rb") as handle:
+        written = handle.read()
+    if written != first:
+        reject("written entry.txt does not match the rendered bytes")
+    print(f"wrote {target}: {len(first.decode('utf-8').strip())} characters, "
+          f"{len(first)} bytes")
 
 
 if __name__ == "__main__":
